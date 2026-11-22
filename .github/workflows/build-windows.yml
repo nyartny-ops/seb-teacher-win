@@ -38,14 +38,14 @@ jobs:
         run: msbuild SEBastian.slnf /m /nologo /v:minimal /p:Configuration=Release /p:Platform=x64 /p:LangVersion=latest
 
       - name: Test teacher panel logic
-        shell: powershell
+        shell: pwsh
         run: |
           $dll = Resolve-Path "SafeExamBrowser.Settings\bin\x64\Release\SafeExamBrowser.Settings.dll"
           powershell -NoProfile -ExecutionPolicy Bypass -File Installer\test\TeacherSettings.Tests.ps1 -Dll $dll
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Check build output
-        shell: powershell
+        shell: pwsh
         run: |
           $need = @(
             "SafeExamBrowser.Runtime\bin\x64\Release\SafeExamBrowser.exe",
@@ -63,13 +63,13 @@ jobs:
           }
 
       - name: Download Visual C++ runtime
-        shell: powershell
+        shell: pwsh
         run: |
           $ProgressPreference = 'SilentlyContinue'
           Invoke-WebRequest "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile Installer\vc_redist.x64.exe
 
       - name: Build installer (Inno Setup)
-        shell: powershell
+        shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) {
@@ -83,7 +83,7 @@ jobs:
       # 1) вход по ключу включён → должно быть окно «Ключ доступа»;
       # 2) выключен → панель преподавателя. На каждом шаге — скриншот.
       - name: Smoke test (install + launch)
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
           New-Item -ItemType Directory -Force test | Out-Null
