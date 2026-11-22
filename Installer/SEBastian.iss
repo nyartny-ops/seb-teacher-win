@@ -21,7 +21,7 @@ AppId={{6E3B1C8A-5E2D-4C7B-9A31-5EBA57A11A11}
 AppName=SEBастьян — Safe Exam Browser
 AppVersion={#AppVersion}
 AppVerName=SEBастьян {#AppVersion} (бета)
-AppPublisher=data_cltr · SEBастьян
+AppPublisher=SEBастьян
 AppPublisherURL=https://seb.korova.pro
 AppSupportURL=https://seb.korova.pro
 DefaultDirName={autopf}\SafeExamBrowser
@@ -57,7 +57,7 @@ Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 ru.WelcomeLabel1=Привет! Это SEBастьян
 ru.WelcomeLabel2=Сейчас поставим Safe Exam Browser с панелью преподавателя.%n%nУстановщик сам поставит всё нужное (библиотеки Visual C++ и службу SEB). Если на компьютере уже есть Safe Exam Browser — он будет заменён.%n%n⚠ Это бета-версия: используйте на свой страх и риск.%n%nЗакройте браузеры и нажмите «Далее».
 ru.FinishedHeadingLabel=Готово!
-ru.FinishedLabel=Safe Exam Browser установлен. Ярлык — на рабочем столе.%n%nЕсли преподаватель включил вход по ключу, получите ключ в Telegram-боте SEBастьян. Что-то не так — https://seb.korova.pro
+ru.FinishedLabel=Safe Exam Browser установлен. Ярлык — на рабочем столе.%n%nЕсли SEB попросит ключ — получите его в Telegram-боте SEBастьян и вводите с включённым VPN (после входа VPN можно выключить). Что-то не так — https://seb.korova.pro
 
 [Tasks]
 Name: "desktopicon"; Description: "Ярлык на рабочем столе"; GroupDescription: "Дополнительно:"

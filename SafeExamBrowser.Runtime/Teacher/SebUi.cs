@@ -1,5 +1,5 @@
 ﻿/*
- * SEBастьян — общий стиль окон (ретро-Windows + фирменная палитра data_cltr).
+ * SEBастьян — общий стиль окон (ретро-Windows + палитра SEBастьяна).
  *
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -93,15 +93,16 @@ namespace SafeExamBrowser.Runtime.Teacher
 				Padding = new Thickness(10, 0, 6, 0)
 			};
 			var barGrid = new DockPanel();
-			var logo = new TextBlock
+			// знак SEBастьяна: «>_» в лаймовом квадрате
+			var logo = new Border
 			{
-				Text = "/><",
-				FontFamily = Mono,
-				FontWeight = FontWeights.Bold,
-				Foreground = Lime,
-				FontSize = 15,
+				Background = Lime,
+				BorderBrush = Brushes.Black,
+				BorderThickness = new Thickness(1.5),
+				Padding = new Thickness(5, 0, 5, 1),
 				VerticalAlignment = VerticalAlignment.Center,
-				Margin = new Thickness(0, 0, 10, 0)
+				Margin = new Thickness(0, 0, 10, 0),
+				Child = new TextBlock { Text = ">_", FontFamily = Mono, FontWeight = FontWeights.Bold, Foreground = Brushes.Black, FontSize = 13 }
 			};
 			var caption = new TextBlock
 			{

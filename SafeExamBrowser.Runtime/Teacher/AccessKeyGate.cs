@@ -251,7 +251,7 @@ namespace SafeExamBrowser.Runtime.Teacher
 				return true;
 			}
 
-			return SebUi.OnUiThread(() => new AccessKeyWindow(this, true, "Нет связи с сервером SEBастьяна. Проверь интернет, выключи VPN и нажми «Повторить».").ShowDialog());
+			return SebUi.OnUiThread(() => new AccessKeyWindow(this, true, "Нет связи с сервером SEBастьяна. Включи VPN, проверь интернет и нажми «Повторить».").ShowDialog());
 		}
 
 		/// <summary>Повторная проверка связи из окна (фоновый поток). null — нет связи.</summary>
@@ -286,7 +286,7 @@ namespace SafeExamBrowser.Runtime.Teacher
 
 			if (response.NetworkError)
 			{
-				return "Нет связи с сервером SEBастьяна. Проверь интернет и VPN, потом попробуй ещё раз.";
+				return "Нет связи с сервером SEBастьяна. Включи VPN и проверь интернет, потом попробуй ещё раз.";
 			}
 
 			return response.Message ?? "Сервер ответил ошибкой (" + response.Status + "). Попробуй ещё раз.";
@@ -321,13 +321,29 @@ namespace SafeExamBrowser.Runtime.Teacher
 			this.offline = offline;
 
 			ContentControl body;
-			window = SebUi.CreateWindow("SEBастьян — ключ доступа", 560, 430, out body);
+			window = SebUi.CreateWindow("SEBастьян — ключ доступа", 560, 500, out body);
 			window.Closing += (o, e) => { if (window.DialogResult == null) { e.Cancel = true; } };
 			window.PreviewKeyDown += (o, e) => { if (e.Key == Key.System && e.SystemKey == Key.F4) { e.Handled = true; } };
 
 			var stack = new StackPanel { Margin = new Thickness(32, 22, 32, 18) };
 			stack.Children.Add(SebUi.Heading("Ключ доступа", 44));
-			stack.Children.Add(SebUi.Text("Получи ключ в Telegram-боте SEBастьян («🔑 Получить ключ») и введи его ниже. Один ключ — один запуск.", 14.5));
+			stack.Children.Add(SebUi.Text("Получи ключ в Telegram-боте SEBастьян («Получить ключ») и введи его ниже. Один ключ — один запуск.", 14.5));
+
+			var vpn = new Border
+			{
+				Background = Brushes.Black,
+				Padding = new Thickness(12, 8, 12, 8),
+				Margin = new Thickness(0, 12, 0, 0),
+				Child = new TextBlock
+				{
+					Text = "Нужен включённый VPN: так SEB сможет проверить ключ. После входа VPN можно выключить.",
+					Foreground = SebUi.Lime,
+					FontFamily = SebUi.Mono,
+					FontSize = 12.5,
+					TextWrapping = TextWrapping.Wrap
+				}
+			};
+			stack.Children.Add(vpn);
 
 			keyField = SebUi.Input(28, true);
 			keyField.CharacterCasing = CharacterCasing.Upper;
@@ -467,7 +483,7 @@ namespace SafeExamBrowser.Runtime.Teacher
 
 					if (required == null)
 					{
-						error.Text = "Всё ещё нет связи с сервером. Проверь интернет и VPN.";
+						error.Text = "Всё ещё нет связи с сервером. Включи VPN и проверь интернет.";
 						ApplyMode();
 						return;
 					}
