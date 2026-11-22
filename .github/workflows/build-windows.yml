@@ -1,0 +1,163 @@
+name: Build SEBастьян (Windows)
+
+# Собирает SEB для Windows с панелью преподавателя и ключом доступа SEBастьяна,
+# прогоняет автотесты и делает установщик SEBastian-win-setup.exe.
+# Запуск: вкладка Actions → «Build SEBастьян (Windows)» → Run workflow,
+# или автоматически при каждом push в main. Готовый установщик — в Artifacts
+# и в Releases (оттуда его раздаёт сайт SEBастьяна).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 75
+    env:
+      APP_VERSION: 3.10.3.${{ github.run_number }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Set up NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Restore packages
+        run: nuget restore SafeExamBrowser.sln
+
+      - name: Build (Release x64)
+        run: msbuild SEBastian.slnf /m /nologo /v:minimal /p:Configuration=Release /p:Platform=x64 /p:LangVersion=latest
+
+      - name: Test teacher panel logic
+        shell: powershell
+        run: |
+          $dll = Resolve-Path "SafeExamBrowser.Settings\bin\x64\Release\SafeExamBrowser.Settings.dll"
+          powershell -NoProfile -ExecutionPolicy Bypass -File Installer\test\TeacherSettings.Tests.ps1 -Dll $dll
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Check build output
+        shell: powershell
+        run: |
+          $need = @(
+            "SafeExamBrowser.Runtime\bin\x64\Release\SafeExamBrowser.exe",
+            "SafeExamBrowser.Runtime\bin\x64\Release\SafeExamBrowser.Client.exe",
+            "SafeExamBrowser.Service\bin\x64\Release\SafeExamBrowser.Service.exe",
+            "SafeExamBrowser.ResetUtility\bin\x64\Release\SafeExamBrowser.ResetUtility.exe",
+            "SebWindowsConfig\bin\x64\Release\SEBConfigTool.exe"
+          )
+          $missing = $need | Where-Object { -not (Test-Path $_) }
+          if ($missing) {
+            Write-Host "Нет файлов:"; $missing
+            Get-ChildItem SebWindowsConfig\bin\x64\Release -Filter *.exe | Select-Object Name
+            Get-ChildItem SafeExamBrowser.Runtime\bin\x64\Release -Filter *.exe | Select-Object Name
+            if ($missing | Where-Object { $_ -notlike "SebWindowsConfig*" }) { exit 1 }
+          }
+
+      - name: Download Visual C++ runtime
+        shell: powershell
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile Installer\vc_redist.x64.exe
+
+      - name: Build installer (Inno Setup)
+        shell: powershell
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress | Out-Null
+          }
+          & $iscc /Q "/DAppVersion=$env:APP_VERSION" Installer\SEBastian.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Get-Item Installer\Output\SEBastian-win-setup.exe | Select-Object Name, Length
+
+      # Ставим как студент (тихо), проверяем службу и запускаем SEB против тестового сервера:
+      # 1) вход по ключу включён → должно быть окно «Ключ доступа»;
+      # 2) выключен → панель преподавателя. На каждом шаге — скриншот.
+      - name: Smoke test (install + launch)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          New-Item -ItemType Directory -Force test | Out-Null
+          $p = Start-Process Installer\Output\SEBastian-win-setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/LOG=test\setup.log' -Wait -PassThru
+          Write-Host "Установщик завершился с кодом $($p.ExitCode)"
+          $exe = "$env:ProgramFiles\SafeExamBrowser\Application\SafeExamBrowser.exe"
+          if (-not (Test-Path $exe)) { Write-Host "SEB не установлен"; exit 1 }
+          $svc = Get-Service SafeExamBrowser -ErrorAction SilentlyContinue
+          Write-Host "Служба SEB: $($svc.Status)"
+          if (-not $svc -or $svc.Status -ne 'Running') { Write-Host "Служба SEB не запущена"; exit 1 }
+          # разрешаем SEB обратиться к тестовому серверу вместо seb.korova.pro (только для CI)
+          New-Item -ItemType File -Force (Join-Path (Split-Path $exe) 'sebastian-test-server.flag') | Out-Null
+
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          function Shot($name) {
+            try {
+              $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+              $g = [System.Drawing.Graphics]::FromImage($bmp)
+              $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+              $bmp.Save("test\$name.png")
+              $g.Dispose(); $bmp.Dispose()
+            } catch { Write-Host "Скриншот не удался: $_" }
+          }
+          function StopSeb {
+            Get-Process SafeExamBrowser* -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -ne 'SafeExamBrowser.Service' } | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep 3
+          }
+
+          $ok = $true
+          foreach ($run in @(@{ req = '1'; name = '1-access-key'; expect = 'GET /api/v1/gate' }, @{ req = '0'; name = '2-teacher-panel'; expect = 'POST /api/v1/launch' })) {
+            $log = "test\mock-$($run.name).log"
+            $mock = Start-Process python -ArgumentList '-u', 'Installer\test\mock_server.py', '8765', $run.req -PassThru -NoNewWindow -RedirectStandardOutput $log
+            Start-Sleep 2
+            $env:SEBASTIAN_SERVER = 'http://127.0.0.1:8765'
+            $seb = Start-Process $exe -WorkingDirectory (Split-Path $exe) -PassThru
+            Start-Sleep 30
+            Shot $run.name
+            $alive = -not $seb.HasExited
+            Write-Host "$($run.name): SEB работает = $alive"
+            StopSeb
+            Stop-Process -Id $mock.Id -Force -ErrorAction SilentlyContinue
+            Start-Sleep 1
+            $text = Get-Content $log -Raw -ErrorAction SilentlyContinue
+            Write-Host $text
+            if (-not $alive) { $ok = $false; Write-Host "SEB завершился раньше времени" }
+            if ($text -notmatch [regex]::Escape($run.expect)) { $ok = $false; Write-Host "SEB не обратился к серверу: ждали '$($run.expect)'" }
+          }
+          Copy-Item "$env:LOCALAPPDATA\SafeExamBrowser\Logs\*" test -ErrorAction SilentlyContinue
+          if (-not $ok) { exit 1 }
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEBastian-win-setup
+          path: Installer/Output/SEBastian-win-setup.exe
+          if-no-files-found: error
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test/
+          if-no-files-found: ignore
+
+      - name: Publish release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('win-build-{0}', github.run_number) }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('SEBастьян для Windows · сборка {0}', github.run_number) }}
+          body: |
+            Safe Exam Browser для Windows с панелью преподавателя и ключом доступа SEBастьяна.
+            ⚠ Бета-версия — используйте на свой страх и риск.
+          make_latest: true
+          files: Installer/Output/SEBastian-win-setup.exe
