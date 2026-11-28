@@ -47,6 +47,11 @@ namespace SafeExamBrowser.Settings.UserInterface
 		public bool ShowKeyboardLayout { get; set; }
 
 		/// <summary>
+		/// SEBастьян: determines whether a small button to minimize the browser windows is shown in the taskbar.
+		/// </summary>
+		public bool ShowMinimizeButton { get; set; }
+
+		/// <summary>
 		/// Determines whether the system control for the network is accessible via the taskbar.
 		/// </summary>
 		public bool ShowNetwork { get; set; }

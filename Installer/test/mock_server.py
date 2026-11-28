@@ -16,7 +16,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         print("GET", self.path, flush=True)
-        self.reply(200, {"ok": True, "required": REQUIRED, "bot": "https://t.me/"})
+        self.reply(200, {"ok": True, "required": REQUIRED, "bot": "https://t.me/", "profile": {"preset": "free", "options": {"minimizeButton": True}, "startURL": "", "quit": "teacher", "source": "global"}})
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)

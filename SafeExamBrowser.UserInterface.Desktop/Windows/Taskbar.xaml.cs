@@ -31,6 +31,11 @@ namespace SafeExamBrowser.UserInterface.Desktop.Windows
 			set { Dispatcher.Invoke(() => Clock.Visibility = value ? Visibility.Visible : Visibility.Collapsed); }
 		}
 
+		public bool ShowMinimizeButton
+		{
+			set { Dispatcher.Invoke(() => MinimizeButton.Visibility = value ? Visibility.Visible : Visibility.Collapsed); }
+		}
+
 		public bool ShowQuitButton
 		{
 			set { Dispatcher.Invoke(() => QuitButton.Visibility = value ? Visibility.Visible : Visibility.Collapsed); }
@@ -144,6 +149,21 @@ namespace SafeExamBrowser.UserInterface.Desktop.Windows
 			Closing += Taskbar_Closing;
 			Loaded += (o, args) => InitializeBounds();
 			QuitButton.Clicked += QuitButton_Clicked;
+			MinimizeButton.Click += MinimizeButton_Click;
+		}
+
+		private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+		{
+			// сворачиваются только окна браузера SEB; панель SEB остаётся, окно возвращается кнопкой SEB на ней
+			foreach (Window window in Application.Current.Windows)
+			{
+				if (window is BrowserWindow && window.IsVisible)
+				{
+					window.WindowState = WindowState.Minimized;
+				}
+			}
+
+			logger.Info("SEBastian: browser windows minimized via the taskbar button.");
 		}
 
 		public void InitializeText(IText text)

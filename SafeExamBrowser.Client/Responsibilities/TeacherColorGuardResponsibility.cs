@@ -54,7 +54,7 @@ namespace SafeExamBrowser.Client.Responsibilities
 		{
 			try
 			{
-				if (!TeacherSettings.Load().ColorGuardEnabled)
+				if (!TeacherSettings.LoadForSession().ColorGuardEnabled)
 				{
 					Logger.Info("SEBastian color guard is disabled.");
 					return;

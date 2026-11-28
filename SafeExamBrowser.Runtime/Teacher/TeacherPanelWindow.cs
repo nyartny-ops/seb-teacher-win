@@ -95,7 +95,22 @@ namespace SafeExamBrowser.Runtime.Teacher
 			level.FontWeight = FontWeights.SemiBold;
 			stack.Children.Add(level);
 
-			var url = string.IsNullOrWhiteSpace(settings.StartUrl) ? "из настроек SEB / .seb-файла" : settings.StartUrl;
+			if (settings.FromServer)
+			{
+				var fromBot = new Border
+				{
+					Background = SebUi.Lime,
+					BorderBrush = Brushes.Black,
+					BorderThickness = new Thickness(2),
+					Padding = new Thickness(10, 6, 10, 6),
+					Margin = new Thickness(0, 8, 0, 0),
+					HorizontalAlignment = HorizontalAlignment.Left,
+					Child = SebUi.MonoText("Настройки заданы преподавателем в боте SEBастьяна", 12.5)
+				};
+				stack.Children.Add(fromBot);
+			}
+
+			var url = string.IsNullOrWhiteSpace(settings.StartUrl) ? "из теста Moodle / .seb-файла" : settings.StartUrl;
 			var urlText = SebUi.Text("Адрес: " + url, 13, SebUi.Gray);
 			urlText.Margin = new Thickness(0, 4, 0, 24);
 			stack.Children.Add(urlText);

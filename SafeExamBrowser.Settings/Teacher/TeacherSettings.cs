@@ -68,8 +68,31 @@ namespace SafeExamBrowser.Settings.Teacher
 		}
 	}
 
+	/// <summary>Настройки, заданные преподавателем в боте SEBастьяна (приходят с сервера при запуске).</summary>
+	public class TeacherServerProfile
+	{
+		public string Preset { get; set; }
+		public Dictionary<string, bool> Options { get; set; }
+		public string StartUrl { get; set; }
+		public bool QuitWithoutPassword { get; set; }
+		public string Source { get; set; }
+
+		public TeacherServerProfile()
+		{
+			Options = new Dictionary<string, bool>();
+			Preset = "standard";
+			StartUrl = string.Empty;
+			Source = "global";
+		}
+	}
+
 	public class TeacherSettings
 	{
+		/// <summary>Профиль из бота для текущего запуска SEB (null — настройки берутся с этого компьютера).</summary>
+		public static TeacherServerProfile Active { get; set; }
+
+		/// <summary>true — значения пришли из бота SEBастьяна.</summary>
+		public bool FromServer { get; private set; }
 		/// <summary>
 		/// SHA-256 пароля преподавателя (32123212). Чтобы сменить пароль, посчитайте SHA-256 нового пароля
 		/// (например, в PowerShell: (Get-FileHash -Algorithm SHA256 -InputStream ([IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes('НОВЫЙ')))).Hash.ToLower())
@@ -87,7 +110,8 @@ namespace SafeExamBrowser.Settings.Teacher
 			new TeacherOption("newWindows", 0, "Разрешить ссылкам открывать новые окна", "Если выключено — ссылки открываются в том же окне.", true, true, false),
 			new TeacherOption("showTaskBar", 0, "Показывать нижнюю панель SEB", "Часы, звук, сеть и кнопка выхода внизу экрана.", true, true, true),
 			new TeacherOption("showToolbar", 0, "Панель кнопок над страницей", "Кнопки «Назад», «Вперёд», «Обновить» над страницей (без адресной строки).", true, false, false),
-			new TeacherOption("showWiFi", 0, "Сеть (Wi-Fi) на нижней панели", "Показ и выбор сети Wi-Fi.", true, false, false),
+			new TeacherOption("minimizeButton", 0, "Кнопка «Свернуть» на панели SEB", "Маленькая кнопка внизу: свернуть окно контрольной. Вернуть — кнопкой SEB на той же панели.", true, false, false),
+			new TeacherOption("showWiFi", 0, "Сеть (Wi-Fi) на нижней панели", "Показ и выбор сети Wi-Fi.", false, false, false),
 
 			new TeacherOption("blockAppSwitching", 1, "Запретить другие программы", "SEB работает на отдельном рабочем столе, Alt+Tab, Win и Ctrl+Esc отключены.", false, true, true),
 			new TeacherOption("blockSystemMenu", 1, "Заблокировать меню Ctrl+Alt+Del", "Диспетчер задач, смена пользователя, выход и блокировка недоступны. Нужна служба SEB.", false, true, true),
@@ -110,7 +134,6 @@ namespace SafeExamBrowser.Settings.Teacher
 			new TeacherOption("devConsole", 2, "Консоль разработчика", "Только для отладки, студентам не включать.", false, false, false),
 
 			new TeacherOption("allowQuit", 3, "Разрешить выход из SEB", "Кнопка выхода на панели. Пароль выхода задаётся ниже.", true, true, true),
-			new TeacherOption("allowReconfiguration", 3, "Разрешить открывать другие .seb-файлы", "Студент сможет открыть ссылку seb:// или .seb-файл во время работы. Обычно не нужно.", false, false, false),
 		};
 
 		private const string StartUrlKey = "startURL";
@@ -133,6 +156,12 @@ namespace SafeExamBrowser.Settings.Teacher
 		public static string FilePath
 		{
 			get { return Path.Combine(DirectoryPath, "TeacherSettings.txt"); }
+		}
+
+		/// <summary>Итоговые настройки текущего запуска (с учётом бота) — их читает клиентский процесс SEB.</summary>
+		public static string SessionFilePath
+		{
+			get { return Path.Combine(DirectoryPath, "TeacherSession.txt"); }
 		}
 
 		public TeacherSettings()
@@ -254,6 +283,31 @@ namespace SafeExamBrowser.Settings.Teacher
 			RequirePasswordToStart = false;
 		}
 
+		public void ApplyServerProfile(TeacherServerProfile profile)
+		{
+			if (profile == null)
+			{
+				return;
+			}
+
+			ApplyPreset(profile.Preset == "free" ? TeacherPreset.Free : profile.Preset == "strict" ? TeacherPreset.Strict : TeacherPreset.Standard);
+
+			foreach (var pair in profile.Options ?? new Dictionary<string, bool>())
+			{
+				foreach (var option in Options)
+				{
+					if (option.Id == pair.Key)
+					{
+						Set(option.Id, pair.Value);
+					}
+				}
+			}
+
+			StartUrl = profile.StartUrl ?? string.Empty;
+			QuitPasswordMode = profile.QuitWithoutPassword ? TeacherQuitPasswordMode.None : TeacherQuitPasswordMode.Teacher;
+			FromServer = true;
+		}
+
 		public bool ColorGuardEnabled
 		{
 			get { return Get("colorGuard"); }
@@ -335,6 +389,33 @@ namespace SafeExamBrowser.Settings.Teacher
 
 		public bool Save()
 		{
+			return SaveTo(FilePath);
+		}
+
+		public bool SaveSession()
+		{
+			return SaveTo(SessionFilePath);
+		}
+
+		/// <summary>Для клиентского процесса: настройки текущего запуска, а если их нет — сохранённые на компьютере.</summary>
+		public static TeacherSettings LoadForSession()
+		{
+			try
+			{
+				if (File.Exists(SessionFilePath) && (DateTime.Now - File.GetLastWriteTime(SessionFilePath)).TotalHours < 24)
+				{
+					return LoadFrom(SessionFilePath);
+				}
+			}
+			catch (Exception)
+			{
+			}
+
+			return Load();
+		}
+
+		private bool SaveTo(string path)
+		{
 			try
 			{
 				var data = ToDictionary();
@@ -343,15 +424,15 @@ namespace SafeExamBrowser.Settings.Teacher
 
 				Directory.CreateDirectory(DirectoryPath);
 
-				var temp = FilePath + ".tmp";
+				var temp = path + ".tmp";
 				File.WriteAllText(temp, content, new UTF8Encoding(false));
 
-				if (File.Exists(FilePath))
+				if (File.Exists(path))
 				{
-					File.Delete(FilePath);
+					File.Delete(path);
 				}
 
-				File.Move(temp, FilePath);
+				File.Move(temp, path);
 
 				return true;
 			}
@@ -363,11 +444,23 @@ namespace SafeExamBrowser.Settings.Teacher
 
 		public static TeacherSettings Load()
 		{
+			var settings = LoadFrom(FilePath);
+
+			if (Active != null)
+			{
+				settings.ApplyServerProfile(Active);
+			}
+
+			return settings;
+		}
+
+		private static TeacherSettings LoadFrom(string path)
+		{
 			var settings = new TeacherSettings();
 
 			try
 			{
-				if (!File.Exists(FilePath))
+				if (!File.Exists(path))
 				{
 					return settings;
 				}
@@ -375,7 +468,7 @@ namespace SafeExamBrowser.Settings.Teacher
 				var data = new SortedDictionary<string, string>(StringComparer.Ordinal);
 				var mac = string.Empty;
 
-				foreach (var rawLine in File.ReadAllLines(FilePath, Encoding.UTF8))
+				foreach (var rawLine in File.ReadAllLines(path, Encoding.UTF8))
 				{
 					var line = rawLine.TrimEnd('\r');
 					var index = line.IndexOf('=');
@@ -531,11 +624,20 @@ namespace SafeExamBrowser.Settings.Teacher
 			}
 
 			settings.UserInterface.Taskbar.ShowClock = Get("showTime");
+			settings.UserInterface.Taskbar.ShowMinimizeButton = Get("minimizeButton") && Get("showTaskBar");
 			settings.UserInterface.ActionCenter.ShowClock = Get("showTime");
 
 			// Выход
 			settings.Security.AllowTermination = Get("allowQuit");
-			settings.Security.AllowReconfiguration = Get("allowReconfiguration");
+
+			// Moodle запускает тест кнопкой «Запустить Safe Exam Browser» внутри SEB — это перенастройка.
+			// С паролем выхода SEB разрешает её, только если она явно разрешена и адрес подходит.
+			settings.Security.AllowReconfiguration = true;
+
+			if (string.IsNullOrWhiteSpace(settings.Security.ReconfigurationUrl))
+			{
+				settings.Security.ReconfigurationUrl = "*";
+			}
 
 			switch (QuitPasswordMode)
 			{
@@ -550,10 +652,13 @@ namespace SafeExamBrowser.Settings.Teacher
 					break;
 			}
 
-			// Адрес контрольной
+			// Адрес контрольной — только если SEB запущен без настроек теста. Если тест открыли из Moodle
+			// (файл .seb / ссылка sebs://), его собственный адрес главнее, иначе SEB уйдёт по кругу.
 			var url = (StartUrl ?? string.Empty).Trim();
+			var current = settings.Browser.StartUrl ?? string.Empty;
+			var isDefaultUrl = current.Length == 0 || current.IndexOf("safeexambrowser.org/start", StringComparison.OrdinalIgnoreCase) >= 0;
 
-			if (url.Length > 0)
+			if (url.Length > 0 && isDefaultUrl)
 			{
 				if (!url.Contains("://"))
 				{

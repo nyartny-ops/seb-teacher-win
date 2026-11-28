@@ -21,6 +21,7 @@ namespace SafeExamBrowser.Runtime.Operations.Session
 	internal class TeacherPanelOperation : SessionOperation
 	{
 		private static bool passed;
+		private static TeacherSettings current;
 
 		public override event StatusChangedEventHandler StatusChanged;
 
@@ -45,8 +46,6 @@ namespace SafeExamBrowser.Runtime.Operations.Session
 
 		private OperationResult Run()
 		{
-			var teacher = TeacherSettings.Load();
-
 			if (!passed)
 			{
 				try
@@ -65,6 +64,8 @@ namespace SafeExamBrowser.Runtime.Operations.Session
 						return OperationResult.Aborted;
 					}
 
+					// настройки из бота (если преподаватель их задал) уже учтены в Load()
+					var teacher = TeacherSettings.Load();
 					var start = SebUi.OnUiThread(() => new TeacherPanelWindow(teacher).ShowDialog());
 
 					if (!start)
@@ -72,6 +73,8 @@ namespace SafeExamBrowser.Runtime.Operations.Session
 						Logger.Info("SEBastian: the user chose to quit at the teacher panel.");
 						return OperationResult.Aborted;
 					}
+
+					current = teacher;
 				}
 				catch (Exception e)
 				{
@@ -92,8 +95,13 @@ namespace SafeExamBrowser.Runtime.Operations.Session
 				passed = true;
 			}
 
-			teacher.ApplyTo(Context.Next.Settings);
-			Logger.Info("SEBastian: applied teacher settings (" + TeacherSettings.TitleFor(teacher.MatchingPreset()) + ").");
+			// при перенастройке (тест из Moodle) — те же настройки преподавателя поверх новых настроек теста
+			var settings = current ?? TeacherSettings.Load();
+
+			settings.ApplyTo(Context.Next.Settings);
+			settings.SaveSession();
+			Logger.Info("SEBastian: applied teacher settings (" + TeacherSettings.TitleFor(settings.MatchingPreset()) + (settings.FromServer ? ", from the bot" : "") +
+				"), start URL: " + Context.Next.Settings.Browser.StartUrl);
 
 			return OperationResult.Success;
 		}

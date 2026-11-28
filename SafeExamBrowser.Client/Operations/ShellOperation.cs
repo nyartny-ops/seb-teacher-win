@@ -327,6 +327,7 @@ namespace SafeExamBrowser.Client.Operations
 		private void InitializeQuitButtonForTaskbar()
 		{
 			taskbar.ShowQuitButton = Context.Settings.Security.AllowTermination;
+			taskbar.ShowMinimizeButton = Context.Settings.UserInterface.Taskbar.ShowMinimizeButton;
 		}
 
 		private void InitializeNetworkForActionCenter()

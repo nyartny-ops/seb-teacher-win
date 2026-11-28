@@ -11,6 +11,7 @@
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="../Templates/Buttons.xaml" />
                 <ResourceDictionary Source="../Templates/Colors.xaml" />
                 <ResourceDictionary Source="../Templates/ScrollViewers.xaml" />
             </ResourceDictionary.MergedDictionaries>
@@ -23,6 +24,7 @@
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
         <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Template="{StaticResource SmallBarScrollViewer}">
             <StackPanel x:Name="ApplicationStackPanel" Orientation="Horizontal" />
@@ -30,6 +32,11 @@
         <StackPanel Grid.Column="1" x:Name="NotificationStackPanel" Orientation="Horizontal" VerticalAlignment="Stretch" />
         <StackPanel Grid.Column="2" x:Name="SystemControlStackPanel" Orientation="Horizontal" VerticalAlignment="Stretch" />
         <local:Clock Grid.Column="3" x:Name="Clock" Foreground="{StaticResource SecondaryTextBrush}" Padding="10,0,10,0" />
-        <local:QuitButton Grid.Column="4" x:Name="QuitButton" />
+        <!-- SEBастьян: кнопка «Свернуть» (включается преподавателем). Вернуть окно — кнопкой SEB слева на панели. -->
+        <Button Grid.Column="4" x:Name="MinimizeButton" Width="40" Background="{StaticResource BackgroundBrush}" Template="{StaticResource TaskbarButton}"
+                Visibility="Collapsed" ToolTip="Свернуть окно контрольной" AutomationProperties.Name="Свернуть окно контрольной">
+            <Rectangle Width="14" Height="3" Fill="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,6,0,0" SnapsToDevicePixels="True" />
+        </Button>
+        <local:QuitButton Grid.Column="5" x:Name="QuitButton" />
     </Grid>
 </Window>

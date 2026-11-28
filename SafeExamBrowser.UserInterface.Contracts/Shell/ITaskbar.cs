@@ -23,6 +23,11 @@ namespace SafeExamBrowser.UserInterface.Contracts.Shell
 		bool ShowClock { set; }
 
 		/// <summary>
+		/// SEBастьян: shows a small button which minimizes the browser windows.
+		/// </summary>
+		bool ShowMinimizeButton { set; }
+
+		/// <summary>
 		/// Controls the visibility of the quit button.
 		/// </summary>
 		bool ShowQuitButton { set; }

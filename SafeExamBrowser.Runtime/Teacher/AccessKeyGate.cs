@@ -27,27 +27,35 @@ namespace SafeExamBrowser.Runtime.Teacher
 {
 	internal class AccessKeyGate
 	{
-		internal const string DefaultServer = "https://seb.korova.pro";
+		/// <summary>
+		/// Адреса сервера SEBастьяна по порядку. Если основной (https) не отвечает или отвечает чужой страницей
+		/// (например, 503 от другого сайта на этом сервере), SEB пробует следующий.
+		/// </summary>
+		internal static readonly string[] DefaultServers = { "https://seb.korova.pro", "http://seb.korova.pro" };
 
 		private readonly ILogger logger;
-		private readonly string server;
+		private readonly List<string> servers = new List<string>();
 		private string botUrl;
 
 		internal AccessKeyGate(ILogger logger)
 		{
 			this.logger = logger;
+
 			// Другой адрес сервера — только для автотеста: нужна и переменная окружения, и служебный файл
 			// в папке программы (туда может писать только администратор).
 			var custom = Environment.GetEnvironmentVariable("SEBASTIAN_SERVER");
 			var testFlag = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sebastian-test-server.flag");
 
-			if (string.IsNullOrWhiteSpace(custom) || !File.Exists(testFlag))
+			if (!string.IsNullOrWhiteSpace(custom) && File.Exists(testFlag))
 			{
-				custom = null;
+				servers.Add(custom.Trim().TrimEnd('/'));
+			}
+			else
+			{
+				servers.AddRange(DefaultServers);
 			}
 
-			server = (custom == null ? DefaultServer : custom.Trim()).TrimEnd('/');
-			botUrl = server + "/bot";
+			botUrl = "https://t.me/SEBastianapp";
 
 			try
 			{
@@ -82,17 +90,50 @@ namespace SafeExamBrowser.Runtime.Teacher
 			}
 		}
 
+		/// <summary>Пробует адреса сервера по очереди; рабочий адрес ставит первым для следующих запросов.</summary>
 		private Response Request(string path, Dictionary<string, object> body)
+		{
+			var last = new Response { NetworkError = true };
+
+			for (var i = 0; i < servers.Count; i++)
+			{
+				var server = servers[i];
+				var response = RequestOnce(server, path, body);
+
+				// Ответ нашего сервера — всегда JSON с полем "ok". Всё остальное (чужая страница, 502/503 прокси) — пробуем дальше.
+				if (!response.NetworkError && response.Json != null && response.Json.ContainsKey("ok"))
+				{
+					if (i > 0)
+					{
+						servers.RemoveAt(i);
+						servers.Insert(0, server);
+						logger.Info("SEBastian: using server " + server);
+					}
+
+					return response;
+				}
+
+				logger.Warn("SEBastian: server " + server + " is not usable (HTTP " + response.Status + ").");
+				last = response;
+			}
+
+			last.NetworkError = true;
+
+			return last;
+		}
+
+		private Response RequestOnce(string server, string path, Dictionary<string, object> body)
 		{
 			var response = new Response();
 
 			try
 			{
 				var request = (HttpWebRequest) WebRequest.Create(server + path);
-				request.Timeout = 10000;
-				request.ReadWriteTimeout = 10000;
+				request.Timeout = 8000;
+				request.ReadWriteTimeout = 8000;
 				request.UserAgent = "SEBastian-Windows";
 				request.Proxy = WebRequest.DefaultWebProxy;
+				request.AllowAutoRedirect = false;
 
 				if (body != null)
 				{
@@ -142,10 +183,69 @@ namespace SafeExamBrowser.Runtime.Teacher
 			catch (Exception e)
 			{
 				response.NetworkError = true;
-				logger.Warn("SEBastian: request " + path + " failed: " + e.Message);
+				logger.Warn("SEBastian: request " + server + path + " failed: " + e.Message);
 			}
 
 			return response;
+		}
+
+		/// <summary>Настройки из бота: {"preset", "options": {id: bool}, "startURL", "quit"} или null.</summary>
+		private void TakeProfile(Response response)
+		{
+			object raw;
+
+			if (response.Json == null || !response.Json.TryGetValue("profile", out raw))
+			{
+				return;
+			}
+
+			var dict = raw as Dictionary<string, object>;
+
+			if (dict == null)
+			{
+				TeacherSettings.Active = null;
+				logger.Info("SEBastian: settings are taken from this computer.");
+				return;
+			}
+
+			var profile = new TeacherServerProfile();
+			object value;
+
+			if (dict.TryGetValue("preset", out value) && value is string)
+			{
+				profile.Preset = (string) value;
+			}
+
+			if (dict.TryGetValue("startURL", out value) && value is string)
+			{
+				profile.StartUrl = (string) value;
+			}
+
+			if (dict.TryGetValue("quit", out value) && value is string)
+			{
+				profile.QuitWithoutPassword = (string) value == "none";
+			}
+
+			if (dict.TryGetValue("source", out value) && value is string)
+			{
+				profile.Source = (string) value;
+			}
+
+			var options = dict.TryGetValue("options", out value) ? value as Dictionary<string, object> : null;
+
+			if (options != null)
+			{
+				foreach (var pair in options)
+				{
+					if (pair.Value is bool)
+					{
+						profile.Options[pair.Key] = (bool) pair.Value;
+					}
+				}
+			}
+
+			TeacherSettings.Active = profile;
+			logger.Info("SEBastian: settings from the bot (" + profile.Source + ", " + profile.Preset + ", " + profile.Options.Count + " changes).");
 		}
 
 		private static Dictionary<string, object> DeviceInfo()
@@ -230,6 +330,7 @@ namespace SafeExamBrowser.Runtime.Teacher
 				}
 
 				StoreRequired(required);
+				TakeProfile(gate);
 				logger.Info("SEBastian: access key required = " + required);
 
 				if (!required)
@@ -266,6 +367,7 @@ namespace SafeExamBrowser.Runtime.Teacher
 
 			var required = gate.Flag("required");
 			StoreRequired(required);
+			TakeProfile(gate);
 
 			return required;
 		}
@@ -281,12 +383,15 @@ namespace SafeExamBrowser.Runtime.Teacher
 			if (!response.NetworkError && response.Status == 200 && response.Flag("ok"))
 			{
 				logger.Info("SEBastian: access key accepted.");
+				TakeProfile(response);
 				return null;
 			}
 
 			if (response.NetworkError)
 			{
-				return "Нет связи с сервером SEBастьяна. Включи VPN и проверь интернет, потом попробуй ещё раз.";
+				return response.Status > 0
+					? "Сервер SEBастьяна сейчас недоступен (ошибка " + response.Status + "). Включи VPN и попробуй ещё раз."
+					: "Нет связи с сервером SEBастьяна. Включи VPN и проверь интернет, потом попробуй ещё раз.";
 			}
 
 			return response.Message ?? "Сервер ответил ошибкой (" + response.Status + "). Попробуй ещё раз.";
